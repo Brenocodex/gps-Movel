@@ -12,14 +12,20 @@
             color: white;
             height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
             overflow: hidden;
         }
-        #container {
+        #main-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             width: 90%;
-            max-width: 400px;
+            max-width: 900px;
+            gap: 20px;
+        }
+        #container {
+            width: 100%;
             background: rgba(255, 255, 255, 0.1);
             padding: 20px;
             border-radius: 15px;
@@ -69,26 +75,26 @@
     </style>
 </head>
 <body>
-    <div id="container">
-        <h1>🏍️ Medidor de Velocidade</h1>
-        <p id="datetime">Carregando data e hora...</p>
-        <p>Velocidade Atual:</p>
-        <div id="speed">0 km/h</div>
-        <p id="alert"></p>
-        <p id="radar-alert"></p>
-        <p id="message">Clique em "Iniciar" para medir a velocidade</p>
-        <p id="location">Localização: --</p>
-        <button onclick="requestLocationPermission()">Iniciar</button>
+    <div id="main-container">
+        <div id="container">
+            <h1>🏍️ Medidor de Velocidade</h1>
+            <p id="datetime">Carregando data e hora...</p>
+            <p>Velocidade Atual:</p>
+            <div id="speed">0 km/h</div>
+            <p id="alert"></p>
+            <p id="radar-alert"></p>
+            <p id="message">Clique em "Iniciar" para medir a velocidade</p>
+            <p id="location">Localização: --</p>
+            <button onclick="requestLocationPermission()">Iniciar</button>
+        </div>
     </div>
-
     <script>
         let watchId;
         const speedLimit = 80;
-        const radarLocations = [
-            { lat: -23.55052, lon: -46.633308 }, // Exemplo de coordenadas de radar
-            { lat: -22.9083, lon: -43.1964 }
-        ];
-        
+        const radarLocation = { latitude: -23.550520, longitude: -46.633308 }; // Posição do radar (exemplo: São Paulo)
+        const radarDistanceThreshold = 500; // Distância do radar para alertar (em metros)
+        const radarCloseThreshold = 200; // Distância do radar para alerta intenso (em metros)
+
         function updateDateTime() {
             const now = new Date();
             const formattedDateTime = now.toLocaleString('pt-BR', {
@@ -104,7 +110,7 @@
         }
         setInterval(updateDateTime, 1000);
         updateDateTime();
-        
+
         function requestLocationPermission() {
             if (navigator.geolocation) {
                 document.getElementById("message").innerText = "Obtendo dados do GPS...";
@@ -122,64 +128,47 @@
             let speed = position.coords.speed !== null && position.coords.speed !== undefined ? position.coords.speed * 3.6 : 0;
             document.getElementById("speed").innerText = speed.toFixed(1) + " km/h";
             document.getElementById("message").innerText = "";
-            
+
+            // Calcular a distância até o radar
+            const distance = calculateDistance(position.coords.latitude, position.coords.longitude, radarLocation.latitude, radarLocation.longitude);
+
+            if (distance < radarDistanceThreshold && distance >= radarCloseThreshold) {
+                document.getElementById("radar-alert").innerText = `⚠️ Radar à frente! Distância: ${distance.toFixed(0)} metros`;
+            } else if (distance < radarCloseThreshold) {
+                document.getElementById("radar-alert").innerText = `⚠️ Radar muito próximo! Distância: ${distance.toFixed(0)} metros`;
+            } else {
+                document.getElementById("radar-alert").innerText = "";
+            }
+
             if (speed > speedLimit) {
                 document.getElementById("alert").innerText = "⚠️ Cuidado! Você ultrapassou o limite de velocidade!";
-            } else if (speed > 60) {
-                document.getElementById("alert").innerText = "⚠️ Reduza um pouco a velocidade!";
             } else {
                 document.getElementById("alert").innerText = "";
             }
-            
+
             let latitude = position.coords.latitude;
             let longitude = position.coords.longitude;
-            getLocationDetails(latitude, longitude);
-            checkRadarAlert(latitude, longitude);
+            document.getElementById("location").innerText = `Localização: Lat ${latitude.toFixed(5)}, Lng ${longitude.toFixed(5)}`;
         }
-        
-        function getLocationDetails(latitude, longitude) {
-            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
-                .then(response => response.json())
-                .then(data => {
-                    let locationName = data.display_name || "Localização desconhecida";
-                    document.getElementById("location").innerText = `Localização: ${locationName}`;
-                })
-                .catch(() => {
-                    document.getElementById("location").innerText = `Localização: Lat ${latitude.toFixed(5)}, Lng ${longitude.toFixed(5)}`;
-                });
-        }
-        
-        function checkRadarAlert(lat, lon) {
-            let isNearRadar = radarLocations.some(radar => getDistance(lat, lon, radar.lat, radar.lon) < 0.5);
-            document.getElementById("radar-alert").innerText = isNearRadar ? "🚨 Radar de velocidade próximo! Reduza a velocidade." : "";
-        }
-        
-        function getDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * (Math.PI / 180);
-            const dLon = (lon2 - lon1) * (Math.PI / 180);
-            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Raio da Terra em metros
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return R * c;
+
+            return R * c; // Distância em metros
         }
-        
+
         function handleError(error) {
-            let message = "Erro ao acessar o GPS.";
-            switch (error.code) {
-                case error.PERMISSION_DENIED:
-                    message = "Permissão de GPS negada. Ative nas configurações do seu iPhone.";
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    message = "Sinal do GPS indisponível.";
-                    break;
-                case error.TIMEOUT:
-                    message = "Tempo de espera do GPS esgotado. Tente novamente.";
-                    break;
-            }
-            document.getElementById("message").innerText = message;
-            console.error("Erro no GPS:", error.message);
+            document.getElementById("message").innerText = "Erro ao obter localização.";
         }
     </script>
 </body>
