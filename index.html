@@ -36,7 +36,7 @@
             margin: 10px 0;
             color: #00ffcc;
         }
-        #alert {
+        #alert, #radar-alert {
             color: red;
             font-size: 18px;
             font-weight: bold;
@@ -47,7 +47,7 @@
             margin-top: 10px;
             color: #ffcc00;
         }
-        #location {
+        #location, #datetime {
             font-size: 14px;
             margin-top: 15px;
             color: #00ffcc;
@@ -71,9 +71,11 @@
 <body>
     <div id="container">
         <h1>🏍️ Medidor de Velocidade</h1>
+        <p id="datetime">Carregando data e hora...</p>
         <p>Velocidade Atual:</p>
         <div id="speed">0 km/h</div>
         <p id="alert"></p>
+        <p id="radar-alert"></p>
         <p id="message">Clique em "Iniciar" para medir a velocidade</p>
         <p id="location">Localização: --</p>
         <button onclick="requestLocationPermission()">Iniciar</button>
@@ -82,6 +84,26 @@
     <script>
         let watchId;
         const speedLimit = 80;
+        const radarLocations = [
+            { lat: -23.55052, lon: -46.633308 }, // Exemplo de coordenadas de radar
+            { lat: -22.9083, lon: -43.1964 }
+        ];
+        
+        function updateDateTime() {
+            const now = new Date();
+            const formattedDateTime = now.toLocaleString('pt-BR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById("datetime").innerText = formattedDateTime;
+        }
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
         
         function requestLocationPermission() {
             if (navigator.geolocation) {
@@ -109,9 +131,10 @@
                 document.getElementById("alert").innerText = "";
             }
             
-            let latitude = position.coords.latitude.toFixed(5);
-            let longitude = position.coords.longitude.toFixed(5);
+            let latitude = position.coords.latitude;
+            let longitude = position.coords.longitude;
             getLocationDetails(latitude, longitude);
+            checkRadarAlert(latitude, longitude);
         }
         
         function getLocationDetails(latitude, longitude) {
@@ -122,8 +145,24 @@
                     document.getElementById("location").innerText = `Localização: ${locationName}`;
                 })
                 .catch(() => {
-                    document.getElementById("location").innerText = `Localização: Lat ${latitude}, Lng ${longitude}`;
+                    document.getElementById("location").innerText = `Localização: Lat ${latitude.toFixed(5)}, Lng ${longitude.toFixed(5)}`;
                 });
+        }
+        
+        function checkRadarAlert(lat, lon) {
+            let isNearRadar = radarLocations.some(radar => getDistance(lat, lon, radar.lat, radar.lon) < 0.5);
+            document.getElementById("radar-alert").innerText = isNearRadar ? "🚨 Radar de velocidade próximo! Reduza a velocidade." : "";
+        }
+        
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * (Math.PI / 180);
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
         }
         
         function handleError(error) {
