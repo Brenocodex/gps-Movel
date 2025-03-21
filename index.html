@@ -84,26 +84,12 @@
         const speedLimit = 80;
         
         function requestLocationPermission() {
-            if (navigator.permissions) {
-                navigator.permissions.query({ name: 'geolocation' }).then(permissionStatus => {
-                    if (permissionStatus.state === 'granted' || permissionStatus.state === 'prompt') {
-                        startSpeedMonitor();
-                    } else {
-                        alert("Permissão de localização negada. Ative nas configurações do seu dispositivo.");
-                    }
-                });
-            } else {
-                startSpeedMonitor();
-            }
-        }
-
-        function startSpeedMonitor() {
             if (navigator.geolocation) {
                 document.getElementById("message").innerText = "Obtendo dados do GPS...";
                 watchId = navigator.geolocation.watchPosition(updateSpeed, handleError, {
                     enableHighAccuracy: true,
                     timeout: 5000,
-                    maximumAge: 1000
+                    maximumAge: 0
                 });
             } else {
                 alert("Seu dispositivo não suporta GPS.");
@@ -111,9 +97,8 @@
         }
 
         function updateSpeed(position) {
-            let speed = position.coords.speed * 3.6;
-            speed = speed ? speed.toFixed(1) : 0;
-            document.getElementById("speed").innerText = speed + " km/h";
+            let speed = position.coords.speed !== null && position.coords.speed !== undefined ? position.coords.speed * 3.6 : 0;
+            document.getElementById("speed").innerText = speed.toFixed(1) + " km/h";
             document.getElementById("message").innerText = "";
             
             if (speed > speedLimit) {
@@ -126,7 +111,19 @@
             
             let latitude = position.coords.latitude.toFixed(5);
             let longitude = position.coords.longitude.toFixed(5);
-            document.getElementById("location").innerText = `Localização: Lat ${latitude}, Lng ${longitude}`;
+            getLocationDetails(latitude, longitude);
+        }
+        
+        function getLocationDetails(latitude, longitude) {
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+                .then(response => response.json())
+                .then(data => {
+                    let locationName = data.display_name || "Localização desconhecida";
+                    document.getElementById("location").innerText = `Localização: ${locationName}`;
+                })
+                .catch(() => {
+                    document.getElementById("location").innerText = `Localização: Lat ${latitude}, Lng ${longitude}`;
+                });
         }
         
         function handleError(error) {
