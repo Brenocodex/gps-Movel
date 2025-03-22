@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Medidor de Velocidade</title>
+    <link rel="icon" href="data:,"> <!-- Evita erro 404 do favicon -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=SUA_CHAVE_API&libraries=places"></script>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -14,54 +16,26 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
-        }
-        #main-container {
-            display: flex;
             flex-direction: column;
-            align-items: center;
-            width: 90%;
-            max-width: 900px;
-            gap: 20px;
         }
         #container {
-            width: 100%;
+            width: 90%;
+            max-width: 900px;
             background: rgba(255, 255, 255, 0.1);
             padding: 20px;
             border-radius: 15px;
             box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
             backdrop-filter: blur(10px);
         }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
         #speed {
             font-size: 60px;
             font-weight: bold;
-            margin: 10px 0;
-            color: #00ffcc;
-        }
-        #alert, #radar-alert {
-            color: red;
-            font-size: 18px;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        #message {
-            font-size: 16px;
-            margin-top: 10px;
-            color: #ffcc00;
-        }
-        #location, #datetime {
-            font-size: 14px;
-            margin-top: 15px;
             color: #00ffcc;
         }
         button {
-            padding: 15px 30px;
-            font-size: 18px;
-            margin-top: 20px;
+            padding: 12px 20px;
+            font-size: 16px;
+            margin: 10px;
             background: linear-gradient(135deg, #007bff, #0056b3);
             color: white;
             border: none;
@@ -72,44 +46,39 @@
         button:hover {
             background: linear-gradient(135deg, #0056b3, #003c80);
         }
+        #map-container {
+            display: none;
+            width: 100%;
+            max-width: 600px;
+            height: 400px;
+            margin-top: 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
 <body>
-    <div id="main-container">
-        <div id="container">
-            <h1>🏍️ Medidor de Velocidade</h1>
-            <p id="datetime">Carregando data e hora...</p>
-            <p>Velocidade Atual:</p>
-            <div id="speed">0 km/h</div>
-            <p id="alert"></p>
-            <p id="radar-alert"></p>
-            <p id="message">Clique em "Iniciar" para medir a velocidade</p>
-            <p id="location">Localização: --</p>
-            <button onclick="requestLocationPermission()">Iniciar</button>
+    <div id="container">
+        <h1>🏍️ Medidor de Velocidade</h1>
+        <p>Velocidade Atual:</p>
+        <div id="speed">0 km/h</div>
+        <p id="alert"></p>
+        <p id="radar-alert"></p>
+        <p id="message">Clique em "Iniciar" para medir a velocidade</p>
+        <p id="location">Localização: --</p>
+        <button onclick="requestLocationPermission()">Iniciar</button>
+        <button onclick="openMiniMap()">Mini-Mapa</button>
+
+        <div id="map-container">
+            <div id="map" style="width: 100%; height: 100%;"></div>
         </div>
     </div>
+
     <script>
         let watchId;
-        const speedLimit = 80;
-        const radarLocation = { latitude: -23.550520, longitude: -46.633308 }; // Posição do radar (exemplo: São Paulo)
-        const radarDistanceThreshold = 500; // Distância do radar para alertar (em metros)
-        const radarCloseThreshold = 200; // Distância do radar para alerta intenso (em metros)
-
-        function updateDateTime() {
-            const now = new Date();
-            const formattedDateTime = now.toLocaleString('pt-BR', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-            document.getElementById("datetime").innerText = formattedDateTime;
-        }
-        setInterval(updateDateTime, 1000);
-        updateDateTime();
+        let userPosition = null;
+        let map, directionsService, directionsRenderer;
 
         function requestLocationPermission() {
             if (navigator.geolocation) {
@@ -126,49 +95,57 @@
 
         function updateSpeed(position) {
             let speed = position.coords.speed !== null && position.coords.speed !== undefined ? position.coords.speed * 3.6 : 0;
-            document.getElementById("speed").innerText = speed.toFixed(1) + " km/h";
+            let formattedSpeed = Number.isInteger(speed) ? speed.toFixed(0) : speed.toFixed(1);
+            
+            document.getElementById("speed").innerText = formattedSpeed + " km/h";
             document.getElementById("message").innerText = "";
 
-            // Calcular a distância até o radar
-            const distance = calculateDistance(position.coords.latitude, position.coords.longitude, radarLocation.latitude, radarLocation.longitude);
+            userPosition = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
 
-            if (distance < radarDistanceThreshold && distance >= radarCloseThreshold) {
-                document.getElementById("radar-alert").innerText = `⚠️ Radar à frente! Distância: ${distance.toFixed(0)} metros`;
-            } else if (distance < radarCloseThreshold) {
-                document.getElementById("radar-alert").innerText = `⚠️ Radar muito próximo! Distância: ${distance.toFixed(0)} metros`;
-            } else {
-                document.getElementById("radar-alert").innerText = "";
-            }
-
-            if (speed > speedLimit) {
-                document.getElementById("alert").innerText = "⚠️ Cuidado! Você ultrapassou o limite de velocidade!";
-            } else {
-                document.getElementById("alert").innerText = "";
-            }
-
-            let latitude = position.coords.latitude;
-            let longitude = position.coords.longitude;
-            document.getElementById("location").innerText = `Localização: Lat ${latitude.toFixed(5)}, Lng ${longitude.toFixed(5)}`;
-        }
-
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Raio da Terra em metros
-            const φ1 = lat1 * Math.PI / 180;
-            const φ2 = lat2 * Math.PI / 180;
-            const Δφ = (lat2 - lat1) * Math.PI / 180;
-            const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-            return R * c; // Distância em metros
+            document.getElementById("location").innerText = `Localização: Lat ${userPosition.lat.toFixed(5)}, Lng ${userPosition.lng.toFixed(5)}`;
         }
 
         function handleError(error) {
             document.getElementById("message").innerText = "Erro ao obter localização.";
+        }
+
+        function openMiniMap() {
+            if (!userPosition) {
+                alert("Ative o GPS primeiro!");
+                return;
+            }
+
+            let destination = prompt("Digite o endereço de destino:");
+            if (!destination) return;
+
+            document.getElementById("map-container").style.display = "block";
+
+            if (!map) {
+                map = new google.maps.Map(document.getElementById("map"), {
+                    zoom: 14,
+                    center: userPosition
+                });
+
+                directionsService = new google.maps.DirectionsService();
+                directionsRenderer = new google.maps.DirectionsRenderer({ map: map });
+            }
+
+            let request = {
+                origin: userPosition,
+                destination: destination,
+                travelMode: 'DRIVING'
+            };
+
+            directionsService.route(request, function (result, status) {
+                if (status === 'OK') {
+                    directionsRenderer.setDirections(result);
+                } else {
+                    alert("Erro ao traçar rota: " + status);
+                }
+            });
         }
     </script>
 </body>
